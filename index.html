@@ -21,11 +21,15 @@
         .view-panel.active { display: block; }
 
         /* Hardware Alert Banner */
-        .alert-banner { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin-bottom: 30px; display: flex; align-items: flex-start; gap: 15px;}
+        .alert-banner { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin-bottom: 30px; display: flex; align-items: flex-start; gap: 15px; position: relative;}
         .alert-icon { font-size: 24px; }
         .alert-content h3 { margin: 0 0 10px 0; color: #f87171; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;}
         .alert-content p { margin: 5px 0; color: #f8fafc; font-size: 15px; font-weight: 500;}
         .alert-content span { color: #cbd5e1; font-weight: normal; }
+        
+        /* Interactive Edit Button styling */
+        .edit-banner-btn { background: #1e293b; border: 1px solid #ef4444; color: #f87171; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; position: absolute; right: 20px; top: 20px; transition: 0.2s; }
+        .edit-banner-btn:hover { background: #ef4444; color: #0f172a; }
 
         .kpi-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
         .kpi-card { background: #1e293b; padding: 25px; border-radius: 12px; border-left: 5px solid; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
@@ -114,13 +118,13 @@
         </div>
     </div>
 
-    <!-- DYNAMIC FAULTY HARDWARE CONTAINER (Handled via script) -->
-    <div id="dynamicAlertBanner" class="alert-banner" style="display: none;">
+    <!-- INTERACTIVE FAULTY HARDWARE CONTAINER -->
+    <div id="dynamicAlertBanner" class="alert-banner">
         <div class="alert-icon">⚠️</div>
         <div id="dynamicAlertContent" class="alert-content">
             <h3>Known Faulty Hardware Detected</h3>
-            <!-- Mapped entries load here automatically -->
         </div>
+        <button class="edit-banner-btn" onclick="handleEditFaultyList()">✏️ Edit List</button>
     </div>
 
     <div class="tab-container">
@@ -195,7 +199,7 @@
                 <span style="color: #94a3b8; font-size: 13px; display: block; margin-bottom: 25px;">Deduplicated link Drop counts comparing chronological sequence</span>
                 
                 <svg id="trendSvgGraph" viewBox="0 0 800 400" style="width: 100%; height: auto; display: block;">
-                    <!-- SVG Coordinates mapped dynamic inside callback loop -->
+                    <!-- SVG Coordinates generated at runtime -->
                 </svg>
             </div>
             
@@ -220,12 +224,6 @@
     </div>
 
     <script>
-        // =========================================================================
-        // ✏️ EDIT TARGET HARDWARE ALERTS HERE
-        // Simply add or remove device names inside this bracket to update the banner!
-        // =========================================================================
-        const faultyDevices = ["WRA21005", "WRA21010", "WRA21022", "WRA28061"];
-
         // GOOGLE SPREADSHEET DATABANK CSV ENDPOINT URL
         const csvEndpoint = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQuKiqVK5WwjERg7uJQNCbr-LOCRx_mlZoS_uPIPzlecvst0vTFr5TLWdLpyA9q80Isoz9NVbWDdJ2z/pub?gid=0&single=true&output=csv";
 
@@ -233,6 +231,9 @@
         let currentFilter = 'All';
         let currentMonth = 'All';
         let globalMaxVal = 10;
+        
+        // Load initial values from browser memory, fallback to standard defaults if empty
+        let faultyDevices = JSON.parse(localStorage.getItem('wraFaultyDevices')) || ["WRA21005", "WRA21010", "WRA21022", "WRA28061"];
 
         function switchView(panelId, btnEl) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -246,41 +247,52 @@
                 const response = await fetch(csvEndpoint);
                 const rawCSVText = await response.text();
                 parseAndProcessLogs(rawCSVText);
-                renderAlertBanner(); // Generate the warning layout dynamically
+                renderAlertBanner(); 
             } catch (err) {
                 console.error("Database sync failed: ", err);
                 alert("Database link synchronization lost. Check deployment origin constraints.");
             }
         }
 
+        // Handles user changes dynamically from the webpage interface directly
+        function handleEditFaultyList() {
+            const currentListStr = faultyDevices.join(', ');
+            const newListStr = prompt("Enter faulty WRA device IDs separated by commas (e.g. WRA21005, WRA28061):", currentListStr);
+            
+            if (newListStr !== null) {
+                faultyDevices = newListStr.split(',')
+                                          .map(d => d.trim().toUpperCase())
+                                          .filter(d => d.length > 0);
+                
+                // Save values instantly into browser local storage
+                localStorage.setItem('wraFaultyDevices', JSON.stringify(faultyDevices));
+                renderAlertBanner();
+            }
+        }
+
         function renderAlertBanner() {
-            const banner = document.getElementById('dynamicAlertBanner');
             const contentContainer = document.getElementById('dynamicAlertContent');
 
-            // If list is completely empty, hide the red warning banner automatically!
             if (faultyDevices.length === 0) {
-                banner.style.display = 'none';
+                contentContainer.innerHTML = '<h3>Known Faulty Hardware Detected</h3><p style="color: #94a3b8; font-style: italic; font-size: 14px; margin-top: 5px;">No hardware flags active. Click "Edit List" to add devices.</p>';
                 return;
             }
 
-            // Group devices by region dynamically for the UI presentation
             const grouped = {};
             faultyDevices.forEach(dev => {
+                if(dev.length < 5) return;
                 const regionNum = dev.substring(3, 5);
                 const regionName = `REGION ${regionNum}`;
                 if (!grouped[regionName]) grouped[regionName] = [];
                 grouped[regionName].push(dev);
             });
 
-            // Generate HTML paragraph objects
             let paragraphHTML = '';
             Object.keys(grouped).sort().forEach(region => {
                 paragraphHTML += `<p>${region}: <span>${grouped[region].join(', ')}</span></p>`;
             });
 
-            // Keep the header text but append new elements safely
             contentContainer.innerHTML = '<h3>Known Faulty Hardware Detected</h3>' + paragraphHTML;
-            banner.style.display = 'flex';
         }
 
         function parseAndProcessLogs(csvText) {
@@ -566,7 +578,7 @@
                 <line x1="80" y1="275" x2="750" y2="275" stroke="#1e293b" stroke-width="1" stroke-dasharray="4"/>
                 <line x1="80" y1="350" x2="750" y2="350" stroke="#334155" stroke-width="2"/>
                 
-                <!-- Axis Text scales dynamically to content limits -->
+                <!-- Axis Text -->
                 <text x="65" y="55" fill="#94a3b8" font-size="12" font-weight="bold" text-anchor="end">${gridMaxVal}</text>
                 <text x="65" y="130" fill="#94a3b8" font-size="12" font-weight="bold" text-anchor="end">${Math.round(gridMaxVal * 0.75)}</text>
                 <text x="65" y="205" fill="#94a3b8" font-size="12" font-weight="bold" text-anchor="end">${Math.round(gridMaxVal * 0.5)}</text>
