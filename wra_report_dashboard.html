@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WRA REPORT Dashboard</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        /* Custom scrollbar for table */
+        .table-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .table-scroll::-webkit-scrollbar-track { background: #f1f5f9; rounded: 4px; }
+        .table-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .table-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        [v-cloak] { display: none; }
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9); z-index: 50;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3; border-top: 4px solid #0d9488;
+            border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="spinner mb-4"></div>
+        <h2 class="text-xl font-semibold text-slate-700">Memuatkan Data WRA...</h2>
+        <p class="text-slate-500 text-sm mt-2">Menyambung ke pangkalan data Google Sheets</p>
+    </div>
+
+    <!-- Top Navigation -->
+    <nav class="bg-white border-b border-slate-200 shadow-sm z-10 shrink-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center bg-brand-50 p-2 rounded-lg text-brand-600 mr-3">
+                        <i class="fa-solid fa-network-wired text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-900 leading-tight">WRA REPORT</h1>
+                        <p class="text-xs text-slate-500 font-medium">Network Event Monitoring Dashboard</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-sm text-slate-500 text-right hidden sm:block">
+                        <span id="current-date" class="block font-medium text-slate-700"></span>
+                        <span id="data-status" class="text-xs text-green-600"><i class="fa-solid fa-circle text-[8px] mr-1"></i>Live Data</span>
+                    </div>
+                    <button onclick="fetchData()" class="p-2 rounded-md text-slate-400 hover:text-brand-600 hover:bg-slate-100 transition-colors" title="Refresh Data">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Layout -->
+    <div class="flex-1 overflow-auto bg-slate-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+            <!-- Filter Section -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <h2 class="text-sm font-semibold text-slate-700 flex items-center">
+                        <i class="fa-solid fa-filter mr-2 text-slate-400"></i> Tapisan Data
+                    </h2>
+                    <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                        <!-- Date Filter -->
+                        <div class="flex items-center bg-slate-50 rounded-lg border border-slate-200 overflow-hidden text-sm w-full sm:w-auto">
+                            <span class="px-3 text-slate-500"><i class="fa-regular fa-calendar"></i></span>
+                            <input type="date" id="filter-date" class="py-2 pr-3 bg-transparent border-none focus:ring-0 text-slate-700 w-full sm:w-auto cursor-pointer">
+                        </div>
+
+                        <!-- NMS SVR Filter -->
+                        <select id="filter-nms" class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2 w-full sm:w-auto cursor-pointer">
+                            <option value="all">Semua NMS SVR</option>
+                            <!-- Options populated by JS -->
+                        </select>
+
+                        <!-- Device Filter -->
+                        <select id="filter-device" class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2 w-full sm:w-auto cursor-pointer">
+                            <option value="all">Semua Peranti</option>
+                            <!-- Options populated by JS -->
+                        </select>
+                        
+                        <!-- Reset Filters -->
+                        <button onclick="resetFilters()" class="text-sm text-brand-600 hover:text-brand-800 font-medium px-2 py-1 w-full sm:w-auto text-left sm:text-center">Reset</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Total Events -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center">
+                    <div class="rounded-full bg-blue-50 p-3 flex items-center justify-center h-12 w-12 mr-4">
+                        <i class="fa-solid fa-list-ul text-blue-600 text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-slate-500">Jumlah Acara</p>
+                        <h3 class="text-2xl font-bold text-slate-800" id="kpi-total">0</h3>
+                    </div>
+                </div>
+                
+                <!-- Critical Events -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center">
+                    <div class="rounded-full bg-red-50 p-3 flex items-center justify-center h-12 w-12 mr-4">
+                        <i class="fa-solid fa-triangle-exclamation text-red-600 text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-slate-500">Kritikal (Critical)</p>
+                        <h3 class="text-2xl font-bold text-slate-800" id="kpi-critical">0</h3>
+                    </div>
+                </div>
+
+                <!-- Major Events -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center">
+                    <div class="rounded-full bg-orange-50 p-3 flex items-center justify-center h-12 w-12 mr-4">
+                        <i class="fa-solid fa-bolt text-orange-500 text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-slate-500">Major</p>
+                        <h3 class="text-2xl font-bold text-slate-800" id="kpi-major">0</h3>
+                    </div>
+                </div>
+
+                <!-- Unique Devices -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center">
+                    <div class="rounded-full bg-purple-50 p-3 flex items-center justify-center h-12 w-12 mr-4">
+                        <i class="fa-solid fa-server text-purple-600 text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-slate-500">Peranti Terlibat</p>
+                        <h3 class="text-2xl font-bold text-slate-800" id="kpi-devices">0</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Trend Chart (Line) -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 lg:col-span-2 flex flex-col">
+                    <h3 class="text-base font-semibold text-slate-800 mb-4 flex items-center">
+                        <i class="fa-solid fa-chart-line mr-2 text-brand-500"></i> Trend Acara Harian
+                    </h3>
+                    <div class="flex-1 min-h-[300px] relative w-full">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Severity Distribution (Doughnut) -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col">
+                    <h3 class="text-base font-semibold text-slate-800 mb-4 flex items-center">
+                        <i class="fa-solid fa-chart-pie mr-2 text-brand-500"></i> Taburan Tahap Keseriusan (Severity)
+                    </h3>
+                    <div class="flex-1 min-h-[300px] relative w-full flex items-center justify-center">
+                        <canvas id="severityChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Top Devices (Bar) -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 lg:col-span-3 flex flex-col">
+                    <h3 class="text-base font-semibold text-slate-800 mb-4 flex items-center">
+                        <i class="fa-solid fa-chart-bar mr-2 text-brand-500"></i> 10 Peranti Teratas dengan Acara Terbanyak
+                    </h3>
+                    <div class="flex-1 min-h-[300px] relative w-full">
+                        <canvas id="deviceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                <div class="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+                    <h3 class="text-base font-semibold text-slate-800 flex items-center">
+                        <i class="fa-solid fa-table list mr-2 text-brand-500"></i> Senarai Terperinci WRA
+                    </h3>
+                    <span class="text-xs font-medium bg-slate-100 text-slate-600 px-3 py-1 rounded-full" id="table-count">Menunjukkan 0 rekod</span>
+                </div>
+                
+                <div class="overflow-x-auto max-h-[500px] table-scroll">
+                    <table class="w-full text-sm text-left text-slate-600 min-w-[1000px]">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 font-semibold">Event ID</th>
+                                <th scope="col" class="px-6 py-3 font-semibold">Severity</th>
+                                <th scope="col" class="px-6 py-3 font-semibold">Date & Time</th>
+                                <th scope="col" class="px-6 py-3 font-semibold">Event Type</th>
+                                <th scope="col" class="px-6 py-3 font-semibold">Device Name</th>
+                                <th scope="col" class="px-6 py-3 font-semibold">Interface</th>
+                                <th scope="col" class="px-6 py-3 font-semibold w-1/4">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-slate-100">
+                            <!-- Rows populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <footer class="text-center text-xs text-slate-400 py-4">
+                &copy; <span id="year"></span> WRA Report Dashboard. Dicipta secara berpusat.
+            </footer>
+
+        </div>
+    </div>
+
+    <script>
+        // Set current date
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('ms-MY', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        document.getElementById('year').textContent = new Date().getFullYear();
+
+        // Data Source URL
+        const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQuKiqVK5WwjERg7uJQNCbr-LOCRx_mlZoS_uPIPzlecvst0vTFr5TLWdLpyA9q80Isoz9NVbWDdJ2z/pub?gid=0&single=true&output=csv';
+
+        // Global State Variables
+        let rawData = [];
+        let filteredData = [];
+        let chartInstances = {
+            trend: null,
+            severity: null,
+            device: null
+        };
+
+        // UI Elements
+        const loadingScreen = document.getElementById('loading-screen');
+        const filterDate = document.getElementById('filter-date');
+        const filterNms = document.getElementById('filter-nms');
+        const filterDevice = document.getElementById('filter-device');
+
+        // Color Mapping for Severities
+        const severityColors = {
+            'Critical': '#ef4444', // Red 500
+            'Major': '#f97316',    // Orange 500
+            'Minor': '#eab308',    // Yellow 500
+            'Warning': '#3b82f6',  // Blue 500
+            'Clear': '#22c55e',    // Green 500
+            'Info': '#06b6d4',     // Cyan 500
+            'Default': '#94a3b8'   // Slate 400
+        };
+
+        const getSeverityColor = (severity) => {
+            const key = Object.keys(severityColors).find(k => severity.toLowerCase().includes(k.toLowerCase()));
+            return key ? severityColors[key] : severityColors.Default;
+        };
+
+        // Fetch Data from Google Sheets
+        function fetchData() {
+            loadingScreen.style.display = 'flex';
+            
+            Papa.parse(SHEET_CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    // Filter out rows that don't have an Event ID (empty rows)
+                    rawData = results.data.filter(row => row['Event ID'] && row['Event ID'].trim() !== '');
+                    
+                    // Standardize dates for sorting/filtering if possible
+                    rawData.forEach(row => {
+                        row._severity = row['Severity'] || 'Unknown';
+                        row._device = row['Device Name'] || 'Unknown';
+                        row._nms = row['NMS SVR'] || 'Unknown';
+
+                        // Robust Date Normalization to YYYY-MM-DD
+                        let rawDateStr = row['Date'] || '';
+                        let dStr = rawDateStr.split(' ')[0].trim(); // Get date part, remove time/spaces
+                        let normalized = '';
+
+                        if (dStr) {
+                            // 1. Check YYYY-MM-DD or YYYY/MM/DD
+                            let ymdMatch = dStr.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+                            if (ymdMatch) {
+                                normalized = `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+                            } else {
+                                // 2. Check DD/MM/YYYY or MM/DD/YYYY
+                                let dmyMatch = dStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+                                if (dmyMatch) {
+                                    let p1 = parseInt(dmyMatch[1], 10);
+                                    let p2 = parseInt(dmyMatch[2], 10);
+                                    let year = dmyMatch[3];
+                                    let day, month;
+                                    
+                                    if (p1 > 12) {
+                                        // e.g., 14/02/2026 (p1 > 12 must be day)
+                                        day = p1; month = p2;
+                                    } else if (p2 > 12) {
+                                        // e.g., 02/14/2026 (p2 > 12 must be day)
+                                        month = p1; day = p2;
+                                    } else {
+                                        // Ambiguous (e.g., 02/04/2026). Assume DD/MM/YYYY (Malaysia context)
+                                        day = p1; month = p2;
+                                    }
+                                    normalized = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                }
+                            }
+                            
+                            // 3. Fallback to JS Date parsing for formats like "02-Apr-2026"
+                            if (!normalized) {
+                                let d = new Date(rawDateStr);
+                                if (!isNaN(d.getTime())) {
+                                    let year = d.getFullYear();
+                                    let month = String(d.getMonth() + 1).padStart(2, '0');
+                                    let day = String(d.getDate()).padStart(2, '0');
+                                    normalized = `${year}-${month}-${day}`;
+                                } else {
+                                    normalized = dStr; // Keep original if unparseable
+                                }
+                            }
+                        }
+                        
+                        row._normalizedDate = normalized;
+                    });
+
+                    populateFilters();
+                    applyFilters(); // This will render everything
+                    
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                    }, 500);
+                },
+                error: function(err) {
+                    console.error("Error fetching data: ", err);
+                    alert("Ralat memuat turun data. Sila pastikan pautan Google Sheets boleh diakses umum.");
+                    loadingScreen.style.display = 'none';
+                }
+            });
+        }
+
+        // Populate Dropdown Filters dynamically based on rawData
+        function populateFilters() {
+            const nmsList = [...new Set(rawData.map(item => item._nms))].filter(Boolean).sort();
+            const devices = [...new Set(rawData.map(item => item._device))].filter(Boolean).sort();
+
+            // Store current selection to restore after repopulating
+            const currNms = filterNms.value;
+            const currDev = filterDevice.value;
+
+            filterNms.innerHTML = '<option value="all">Semua NMS SVR</option>';
+            nmsList.forEach(s => {
+                filterNms.innerHTML += `<option value="${s}">${s}</option>`;
+            });
+
+            filterDevice.innerHTML = '<option value="all">Semua Peranti</option>';
+            devices.forEach(d => {
+                filterDevice.innerHTML += `<option value="${d}">${d}</option>`;
+            });
+
+            // Restore selection if valid
+            if (nmsList.includes(currNms)) filterNms.value = currNms;
+            if (devices.includes(currDev)) filterDevice.value = currDev;
+        }
+
+        // Apply Filters
+        function applyFilters() {
+            const sDate = filterDate.value; // Format: YYYY-MM-DD
+            const sNms = filterNms.value;
+            const sDev = filterDevice.value;
+
+            filteredData = rawData.filter(item => {
+                let match = true;
+
+                if (sDate && item._normalizedDate !== sDate) match = false;
+                if (sNms !== 'all' && item._nms !== sNms) match = false;
+                if (sDev !== 'all' && item._device !== sDev) match = false;
+
+                return match;
+            });
+
+            updateKPIs();
+            renderCharts();
+            renderTable();
+        }
+
+        function resetFilters() {
+            filterDate.value = '';
+            filterNms.value = 'all';
+            filterDevice.value = 'all';
+            applyFilters();
+        }
+
+        // Event Listeners for filters
+        filterDate.addEventListener('change', applyFilters);
+        filterNms.addEventListener('change', applyFilters);
+        filterDevice.addEventListener('change', applyFilters);
+
+        // Update KPI Cards
+        function updateKPIs() {
+            document.getElementById('kpi-total').textContent = filteredData.length;
+            
+            const criticalCount = filteredData.filter(i => i._severity.toLowerCase().includes('critical')).length;
+            document.getElementById('kpi-critical').textContent = criticalCount;
+
+            const majorCount = filteredData.filter(i => i._severity.toLowerCase().includes('major')).length;
+            document.getElementById('kpi-major').textContent = majorCount;
+
+            const uniqueDevices = new Set(filteredData.map(i => i._device)).size;
+            document.getElementById('kpi-devices').textContent = uniqueDevices;
+        }
+
+        // Render Charts using Chart.js
+        function renderCharts() {
+            // 1. Prepare Trend Data (Events per Date)
+            const dateCounts = {};
+            filteredData.forEach(item => {
+                const d = item._normalizedDate || 'Unknown Date';
+                dateCounts[d] = (dateCounts[d] || 0) + 1;
+            });
+            // Sort dates
+            const sortedDates = Object.keys(dateCounts).sort((a,b) => new Date(a) - new Date(b));
+            const trendValues = sortedDates.map(d => dateCounts[d]);
+
+            // 2. Prepare Severity Data
+            const severityCounts = {};
+            filteredData.forEach(item => {
+                const s = item._severity;
+                severityCounts[s] = (severityCounts[s] || 0) + 1;
+            });
+            const severityLabels = Object.keys(severityCounts);
+            const severityValues = Object.values(severityCounts);
+            const severityBgColors = severityLabels.map(s => getSeverityColor(s));
+
+            // 3. Prepare Top Devices Data
+            const deviceCounts = {};
+            filteredData.forEach(item => {
+                const dev = item._device;
+                deviceCounts[dev] = (deviceCounts[dev] || 0) + 1;
+            });
+            // Sort by count descending and take top 10
+            const sortedDevices = Object.keys(deviceCounts)
+                .sort((a, b) => deviceCounts[b] - deviceCounts[a])
+                .slice(0, 10);
+            const deviceValues = sortedDevices.map(d => deviceCounts[d]);
+
+            // Default Chart.js Font
+            Chart.defaults.font.family = "'Inter', sans-serif";
+            Chart.defaults.color = '#64748b';
+
+            // -- Destroy old charts if exist --
+            if (chartInstances.trend) chartInstances.trend.destroy();
+            if (chartInstances.severity) chartInstances.severity.destroy();
+            if (chartInstances.device) chartInstances.device.destroy();
+
+            // -- Render Trend Chart --
+            const ctxTrend = document.getElementById('trendChart').getContext('2d');
+            chartInstances.trend = new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: sortedDates,
+                    datasets: [{
+                        label: 'Jumlah Acara',
+                        data: trendValues,
+                        borderColor: '#0ea5e9', // Sky 500
+                        backgroundColor: 'rgba(14, 165, 233, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true,
+                        pointBackgroundColor: '#0ea5e9',
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { borderDash: [4, 4], color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            // -- Render Severity Chart --
+            const ctxSev = document.getElementById('severityChart').getContext('2d');
+            chartInstances.severity = new Chart(ctxSev, {
+                type: 'doughnut',
+                data: {
+                    labels: severityLabels,
+                    datasets: [{
+                        data: severityValues,
+                        backgroundColor: severityBgColors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, usePointStyle: true, padding: 20 } }
+                    }
+                }
+            });
+
+            // -- Render Device Chart --
+            const ctxDev = document.getElementById('deviceChart').getContext('2d');
+            chartInstances.device = new Chart(ctxDev, {
+                type: 'bar',
+                data: {
+                    labels: sortedDevices,
+                    datasets: [{
+                        label: 'Acara',
+                        data: deviceValues,
+                        backgroundColor: '#8b5cf6', // Violet 500
+                        borderRadius: 4,
+                        barPercentage: 0.6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // Horizontal bar chart is better for long device names
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { borderDash: [4, 4], color: '#f1f5f9' } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // Render Data Table
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+            
+            // For performance, slice to maximum 100 rows if dataset is huge, but inform user
+            const displayLimit = 100;
+            const dataToDisplay = filteredData.slice(0, displayLimit);
+            
+            let countText = `Menunjukkan ${dataToDisplay.length} rekod`;
+            if (filteredData.length > displayLimit) {
+                countText = `Menunjukkan ${displayLimit} daripada ${filteredData.length} rekod`;
+            }
+            document.getElementById('table-count').textContent = countText;
+
+            if (dataToDisplay.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-slate-500 italic">Tiada rekod ditemui berdasarkan tapisan semasa.</td></tr>`;
+                return;
+            }
+
+            dataToDisplay.forEach(item => {
+                // Severity Badge logic
+                const sevColor = getSeverityColor(item._severity);
+                // Creating a subtle background from the hex color for the badge
+                const isCriticalOrMajor = item._severity.toLowerCase() === 'critical' || item._severity.toLowerCase() === 'major';
+                const badgeClass = `px-2.5 py-1 rounded-full text-xs font-medium border bg-opacity-10`;
+                
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/70 transition-colors border-b border-slate-50 last:border-0";
+                
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap font-medium text-slate-700">${item['Event ID'] || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="${badgeClass}" style="color: ${sevColor}; background-color: ${sevColor}15; border-color: ${sevColor}30">
+                            ${item['Severity'] || '-'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-slate-500 text-xs">
+                        <div class="font-medium text-slate-700">${item['Date'] || '-'}</div>
+                        <div>${item['Time'] || '-'}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">${item['Event Type'] || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap font-medium text-slate-700">${item['Device Name'] || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-slate-500">${item['Interface'] || '-'}</td>
+                    <td class="px-6 py-4 text-sm text-slate-500 max-w-xs truncate" title="${item['Description'] || ''}">${item['Description'] || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Initialize the app on page load
+        window.onload = function() {
+            fetchData();
+        };
+
+    </script>
+</body>
+</html>
