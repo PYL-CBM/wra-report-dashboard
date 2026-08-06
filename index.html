@@ -97,7 +97,6 @@
         .badge.down { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: #ef4444; }
         .badge.up { background: rgba(34, 197, 94, 0.15); color: #86efac; border-color: #22c55e; }
         
-        /* Status Loading Spinner */
         .loading-screen { position: fixed; inset: 0; background: #0f172a; z-index: 999; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
         .spinner { border: 4px solid rgba(56, 189, 248, 0.1); border-left-color: #38bdf8; width: 45px; height: 44px; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -539,7 +538,6 @@
         function generateDynamicLineGraph() {
             if (wraData.length === 0) return;
 
-            // DYNAMICALLY EXTRACT ALL MONTHS IN CHRONOLOGICAL ORDER FROM DATA
             const monthOrder = { "Jan":1, "Feb":2, "Mar":3, "Apr":4, "May":5, "Jun":6, "Jul":7, "Aug":8, "Sep":9, "Oct":10, "Nov":11, "Dec":12 };
             const monthsOrdered = [...new Set(wraData.map(item => item.my))];
             
@@ -550,14 +548,12 @@
                 return monthOrder[mA] - monthOrder[mB];
             });
 
-            // Tally counts dynamically
             const monthlyCounts = {};
             monthsOrdered.forEach(m => monthlyCounts[m] = 0);
             wraData.forEach(item => {
                 if (monthlyCounts[item.my] !== undefined) monthlyCounts[item.my]++;
             });
 
-            // Side Panel Metrics Calculation
             const sortedCounts = Object.entries(monthlyCounts).sort((a,b) => b[1] - a[1]);
             if (sortedCounts.length > 0) {
                 document.getElementById('sidePanelPeakMonth').innerText = sortedCounts[0][0];
@@ -575,7 +571,6 @@
             const latestCount = monthlyCounts[latestMonth] || 0;
             document.getElementById('sidePanelCurrentJune').innerText = `Latest activity (${latestMonth}): ${latestCount} incidents mapped`;
 
-            // DYNAMIC SVG LINE & AXIS COMPUTATION
             const rawMaxVal = Math.max(...Object.values(monthlyCounts), 50);
             const gridMaxVal = Math.ceil(rawMaxVal / 50) * 50 || 50;
 
