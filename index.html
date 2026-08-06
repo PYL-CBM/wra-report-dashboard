@@ -27,7 +27,6 @@
         .alert-content p { margin: 5px 0; color: #f8fafc; font-size: 15px; font-weight: 500;}
         .alert-content span { color: #cbd5e1; font-weight: normal; }
         
-        /* Interactive Edit Button styling */
         .edit-banner-btn { background: #1e293b; border: 1px solid #ef4444; color: #f87171; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; position: absolute; right: 20px; top: 20px; transition: 0.2s; }
         .edit-banner-btn:hover { background: #ef4444; color: #0f172a; }
 
@@ -98,7 +97,7 @@
         .badge.down { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: #ef4444; }
         .badge.up { background: rgba(34, 197, 94, 0.15); color: #86efac; border-color: #22c55e; }
         
-        /* Status Loading Spinner Override */
+        /* Status Loading Spinner */
         .loading-screen { position: fixed; inset: 0; background: #0f172a; z-index: 999; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
         .spinner { border: 4px solid rgba(56, 189, 248, 0.1); border-left-color: #38bdf8; width: 45px; height: 44px; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -199,7 +198,7 @@
                 <span style="color: #94a3b8; font-size: 13px; display: block; margin-bottom: 25px;">Deduplicated link Drop counts comparing chronological sequence</span>
                 
                 <svg id="trendSvgGraph" viewBox="0 0 800 400" style="width: 100%; height: auto; display: block;">
-                    <!-- SVG Coordinates generated at runtime -->
+                    <!-- SVG Coordinates generated dynamically -->
                 </svg>
             </div>
             
@@ -216,7 +215,7 @@
                 </div>
                 <div class="metric-row">
                     <div style="color: #94a3b8; font-size: 13px; font-weight: bold; text-transform: uppercase;">Current Trajectory</div>
-                    <div class="metric-num" style="color: #22c55e;">Stable State</div>
+                    <div class="metric-num" style="color: #22c55e;">Latest Status</div>
                     <div id="sidePanelCurrentJune" style="color: #64748b; font-size: 12px; margin-top: 2px;">Flapping minimized down to stable baseline figures</div>
                 </div>
             </div>
@@ -224,7 +223,6 @@
     </div>
 
     <script>
-        // GOOGLE SPREADSHEET DATABANK CSV ENDPOINT URL
         const csvEndpoint = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQuKiqVK5WwjERg7uJQNCbr-LOCRx_mlZoS_uPIPzlecvst0vTFr5TLWdLpyA9q80Isoz9NVbWDdJ2z/pub?gid=0&single=true&output=csv";
 
         let wraData = [];
@@ -232,7 +230,6 @@
         let currentMonth = 'All';
         let globalMaxVal = 10;
         
-        // Load initial values from browser memory, fallback to standard defaults if empty
         let faultyDevices = JSON.parse(localStorage.getItem('wraFaultyDevices')) || ["WRA21005", "WRA21010", "WRA21022", "WRA28061"];
 
         function switchView(panelId, btnEl) {
@@ -254,7 +251,6 @@
             }
         }
 
-        // Handles user changes dynamically from the webpage interface directly
         function handleEditFaultyList() {
             const currentListStr = faultyDevices.join(', ');
             const newListStr = prompt("Enter faulty WRA device IDs separated by commas (e.g. WRA21005, WRA28061):", currentListStr);
@@ -264,7 +260,6 @@
                                           .map(d => d.trim().toUpperCase())
                                           .filter(d => d.length > 0);
                 
-                // Save values instantly into browser local storage
                 localStorage.setItem('wraFaultyDevices', JSON.stringify(faultyDevices));
                 renderAlertBanner();
             }
@@ -542,33 +537,64 @@
         }
 
         function generateDynamicLineGraph() {
-            const monthsOrdered = ["Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026", "May 2026", "Jun 2026"];
+            if (wraData.length === 0) return;
+
+            // DYNAMICALLY EXTRACT ALL MONTHS IN CHRONOLOGICAL ORDER FROM DATA
+            const monthOrder = { "Jan":1, "Feb":2, "Mar":3, "Apr":4, "May":5, "Jun":6, "Jul":7, "Aug":8, "Sep":9, "Oct":10, "Nov":11, "Dec":12 };
+            const monthsOrdered = [...new Set(wraData.map(item => item.my))];
+            
+            monthsOrdered.sort((a, b) => {
+                const [mA, yA] = a.split(' ');
+                const [mB, yB] = b.split(' ');
+                if (yA !== yB) return yA - yB;
+                return monthOrder[mA] - monthOrder[mB];
+            });
+
+            // Tally counts dynamically
             const monthlyCounts = {};
             monthsOrdered.forEach(m => monthlyCounts[m] = 0);
-
             wraData.forEach(item => {
-                if(monthlyCounts[item.my] !== undefined) monthlyCounts[item.my]++;
+                if (monthlyCounts[item.my] !== undefined) monthlyCounts[item.my]++;
             });
 
+            // Side Panel Metrics Calculation
             const sortedCounts = Object.entries(monthlyCounts).sort((a,b) => b[1] - a[1]);
-            document.getElementById('sidePanelPeakMonth').innerText = sortedCounts[0][0];
-            document.getElementById('sidePanelPeakCount').innerText = `${sortedCounts[0][1]} Distinct Drops Mapped`;
-            document.getElementById('sidePanelSecondMonth').innerText = sortedCounts[1][0];
-            document.getElementById('sidePanelSecondCount').innerText = `${sortedCounts[1][1]} Distinct Drops Mapped`;
-            document.getElementById('sidePanelCurrentJune').innerText = `Flapping minimized down to ${monthlyCounts["Jun 2026"] || 0} incidents in June`;
+            if (sortedCounts.length > 0) {
+                document.getElementById('sidePanelPeakMonth').innerText = sortedCounts[0][0];
+                document.getElementById('sidePanelPeakCount').innerText = `${sortedCounts[0][1]} Distinct Drops Mapped`;
+            }
+            if (sortedCounts.length > 1) {
+                document.getElementById('sidePanelSecondMonth').innerText = sortedCounts[1][0];
+                document.getElementById('sidePanelSecondCount').innerText = `${sortedCounts[1][1]} Distinct Drops Mapped`;
+            } else {
+                document.getElementById('sidePanelSecondMonth').innerText = "-";
+                document.getElementById('sidePanelSecondCount').innerText = "N/A";
+            }
 
+            const latestMonth = monthsOrdered[monthsOrdered.length - 1];
+            const latestCount = monthlyCounts[latestMonth] || 0;
+            document.getElementById('sidePanelCurrentJune').innerText = `Latest activity (${latestMonth}): ${latestCount} incidents mapped`;
+
+            // DYNAMIC SVG LINE & AXIS COMPUTATION
             const rawMaxVal = Math.max(...Object.values(monthlyCounts), 50);
-            const gridMaxVal = Math.ceil(rawMaxVal / 50) * 50;
+            const gridMaxVal = Math.ceil(rawMaxVal / 50) * 50 || 50;
 
-            const xCoordinates = [100, 220, 340, 460, 580, 700];
+            const numMonths = monthsOrdered.length;
+            const xStart = 100;
+            const xEnd = 700;
+            const xStep = numMonths > 1 ? (xEnd - xStart) / (numMonths - 1) : 0;
+
             const points = monthsOrdered.map((m, idx) => {
                 const count = monthlyCounts[m];
+                const x = numMonths === 1 ? 400 : xStart + (idx * xStep);
                 const y = 350 - ((count / gridMaxVal) * 300);
-                return { x: xCoordinates[idx], y: y, count: count, month: m };
+                return { x: x, y: y, count: count, month: m };
             });
 
-            const pathD = `M ${points.map(p => `${p.x} ${p.y}`).join(' L ')}`;
-            const fillD = `${pathD} L 700 350 L 100 350 Z`;
+            const pathD = `M ${points.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')}`;
+            const lastX = points[points.length - 1].x.toFixed(1);
+            const firstX = points[0].x.toFixed(1);
+            const fillD = `${pathD} L ${lastX} 350 L ${firstX} 350 Z`;
 
             let svgContent = `
                 <!-- Background Grid Lines -->
@@ -587,7 +613,7 @@
             `;
 
             points.forEach(p => {
-                svgContent += `<text x="${p.x}" y="380" fill="#cbd5e1" font-size="13" font-weight="600" text-anchor="middle">${p.month}</text>`;
+                svgContent += `<text x="${p.x.toFixed(1)}" y="380" fill="#cbd5e1" font-size="12" font-weight="600" text-anchor="middle">${p.month}</text>`;
             });
 
             svgContent += `
@@ -597,8 +623,8 @@
 
             points.forEach(p => {
                 svgContent += `
-                    <circle cx="${p.x}" cy="${p.y}" r="6" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
-                    <text x="${p.x}" y="${p.y - 16}" fill="#38bdf8" font-size="13" font-weight="bold" text-anchor="middle">${p.count}</text>
+                    <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="6" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
+                    <text x="${p.x.toFixed(1)}" y="${(p.y - 16).toFixed(1)}" fill="#38bdf8" font-size="13" font-weight="bold" text-anchor="middle">${p.count}</text>
                 `;
             });
 
